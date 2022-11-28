@@ -1,0 +1,103 @@
+https://colab.research.google.com/drive/1m1aCJl-G46n2qJVkoi2A8JZY15vtbhc2#scrollTo=E2M2PT01Sl49 //link to code in google colab
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+import numpy as np
+import pandas as pd 
+import os, sys
+from IPython.display import Image as hu
+from IPython.display import display
+from PIL import Image
+
+!unzip /content/drive/MyDrive/images.zip
+
+fol = "/content/images"
+myfiles  = [f for f in os.listdir(fol) if os.path.isfile(os.path.join(fol, f))]
+
+for i in range (0, 1):
+  print(myfiles[i])
+  display (hu(filename=fol+"/"+myfiles[i], width = 110, height = 120))
+  
+! git clone https://github.com/WongKinYiu/yolov7.git
+
+%cd yolov7
+!ls
+
+! curl -L https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-w6-pose.pt -o yolov7-w6-pose.pt
+
+import torch
+from torchvision import transforms
+
+from utils.datasets import letterbox
+from utils.general import non_max_suppression_kpt
+from utils.plots import output_to_keypoint, plot_skeleton_kpts
+
+import matplotlib.pyplot as plt
+import cv2
+%matplotlib inline
+
+
+def load_model():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = torch.load('/content/yolov7/yolov7-w6-pose.pt', map_location=device)['model']
+    # Put in inference mode
+    model.float().eval()
+
+    if torch.cuda.is_available():
+       model.half().to(device)
+    return model
+
+model = load_model()
+
+
+def run_inference(url):
+    image = cv2.imread(url) 
+    # Resize and pad image
+    image = letterbox(image, 960, stride=64, auto=True)[0] 
+    image = transforms.ToTensor()(image) 
+    # Turn image into batch
+    image = image.unsqueeze(0) 
+    if torch.cuda.is_available():
+        image = image.cuda()
+    output, _ = model(image) 
+    return output, image
+    
+ def save_output(output, image):
+  output = non_max_suppression_kpt(output, 
+                                     0.25, # Confidence Threshold
+                                     0.65, # IoU Threshold
+                                     nc=model.yaml['nc'], # Number of Classes
+                                     nkpt=model.yaml['nkpt'], # Number of Keypoints
+                                     kpt_label=True)
+  with torch.no_grad():
+        output = output_to_keypoint(output)
+        # print (output)
+  
+  with open('/content/unlabeled_keypoints.csv','a+') as rs_file:
+    np.savetxt(rs_file, output, delimiter=",")
+    
+    
+    # specify the img directory path
+path = "/content/images"
+# list files in img directory
+files = os.listdir(path)
+
+
+def total_dataset():
+  i = 0
+  for file in files:
+    if i == 3:
+      break
+    file_path = os.path.join(path,file)
+    output, image = run_inference((file_path))
+    # result_csv.append(save_output(output, image))
+    save_output(output, image)
+    i = i + 1;
+
+
+total_dataset()
+
+
+
+
